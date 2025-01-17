@@ -1,0 +1,1 @@
+/opt/devkitpro/devkitARM/bin/arm-none-eabi-as.exe -march=armv6k -mfloat-abi=hard -mfpu=vfpv2 test.s -o test.o && /opt/devkitpro/devkitARM/bin/arm-none-eabi-objcopy.exe -O binary -j .text test.o test.o
