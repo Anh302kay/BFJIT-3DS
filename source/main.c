@@ -16,14 +16,25 @@ void* allocateExecMemory(size_t size) {
     return memory;
 }
 
+int getNumber() {
+    return 42;
+}
+
 //to get raw machine code of assembly instructios use the arm architecture reference manual
 void generateCode(void* memory) {
-    unsigned char code[] = {
-        0x2A, 0x00, 0xA0, 0xE3,  // MOV R0, #42
-        0x03, 0x10, 0xA0, 0xE3,  // MOV R1, #3
-        0x90, 0x01, 0x00, 0xE0,  // MUL R0, R0, R1
-        0x1E, 0xFF, 0x2F, 0xE1   // BX LR
+    void* addr = getNumber;
+    printf("getNumber() address: %d\n", addr);
+    
+    u32 code[] = {
+        0, // Placeholder for the address of getNumber
+	    0xE51f000c, // ldr r0, [pc, #-12]
+	    0xE52de004, // push {lr}
+        0xE12FFF30,  // bx r0
+        0xE3A01003,  // MOV R1, #3
+        0xE0000190,  // MUL R0, R0, R1   
+        0xE49df004   // pop PC
     };
+    code[0] = (u32)addr;
     memcpy(memory, code, sizeof(code));
     //__builtin___clear_cache(memory, memory + sizeof(code)); // Sync CPU cache
 	ctr_flush_invalidate_cache();
@@ -44,16 +55,16 @@ int main() {
     }
 
     generateCode(memory);
-    JitFunction func = (JitFunction)memory;
+    JitFunction func = (JitFunction)memory+4;
 
     int result = func(); 
+		printf("JIT code returned: %d\n", result);
 	while(aptMainLoop())
 	{
         hidScanInput();
 		if(hidKeysDown() & KEY_START)
 			break;
 
-		printf("JIT code returned: %d\n", result);
 	}
 
 	free(memory);
