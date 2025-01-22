@@ -143,7 +143,7 @@ void jitCompile(const char* path, void* memory) {
     int fSize = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    //  r3, r4, r5, lr
+    //  r4, r5, lr
 
     int jmpStack[256];
     int jmpStackPos = 0;
@@ -153,7 +153,7 @@ void jitCompile(const char* path, void* memory) {
     code[2] = (u32)putchar; // address
     code[3] = (u32)memset; // address
     code[4] = 30000; // constant
-    code[size++] = 0xE92D4038; // push {r3, r4, r5, lr}
+    code[size++] = 0xE92D4070; // push {r4, r5, r6, lr}
     code[size++] = 0xE24DDC75; // sub sp, sp, #29952
     code[size++] = ARM_SUBIMM(SP, SP, 48);
     code[size++] = ARM_MOVREG(R0, SP);
@@ -164,9 +164,9 @@ void jitCompile(const char* path, void* memory) {
     size++;
     // code[size++] = 0xE51F4028; // ldr r4, [pc, #-40]
     code[size++] = ARM_BLX(R4); 
-    code[size++] = ARM_MOVIMM(R3, 0);
-    code[size++] = ARM_MOVREG(R4, SP);
-    code[size] = ARM_LOADADDR(R5, 2);
+    code[size++] = ARM_MOVIMM(R4, 0);
+    code[size++] = ARM_MOVREG(R5, SP);
+    code[size] = ARM_LOADADDR(R6, 2);
     size++;
 
     int ch;
@@ -177,40 +177,33 @@ void jitCompile(const char* path, void* memory) {
         switch (ch)
         {
         case OP_LEFT:
-            // cellLocation--;
-            // assert(cellLocation < 0);
-            code[size++] = 0xE4443001;// strb r3, [r4], #-1
-            code[size++] = 0xE5D43000;// ldrb r3, [r4]
+            code[size++] = 0xE4454001;// strb r4, [r5], #-1
+            code[size++] = 0xE5D54000;// ldrb r4, [r5]
             break;
         case OP_RIGHT:
-            // cellLocation++;
-            // assert(cellLocation > 30000);
-            code[size++] = 0xE4C43001;// strb r3, [r4], #1
-            code[size++] = 0xE5D43000; // ldrb r3, [r4]
+            code[size++] = 0xE4C54001;// strb r4, [r5], #1
+            code[size++] = 0xE5D54000; // ldrb r4, [r5]
             break;
         case OP_ADD:
-            code[size++] = ARM_ADDSIMM(R3, R3, 1);
+            code[size++] = ARM_ADDSIMM(R4, R4, 1);
             break;
         case OP_SUB:
-            code[size++] = ARM_SUBSIMM(R3, R3, 1);
+            code[size++] = ARM_SUBSIMM(R4, R4, 1);
             break;
         case OP_OUTPUT:
-            //no idea why r3 is cleared but prolly due to blx instead of bl
-            code[size++] = 0xE4C43000;// strb r3, [r4]
-            code[size++] = ARM_MOVREG(R0, R3);
-            code[size++] = ARM_BLX(R5);
-            code[size++] = 0xE5D43000; // ldrb r3, [r4]
+            code[size++] = ARM_MOVREG(R0, R4);
+            code[size++] = ARM_BLX(R6);
             break;
         case OP_INPUT:
             break;
         case OP_JZ:
-            code[size++] = 0xE3530000; // cmp r3, #0
+            code[size++] = 0xE3540000; // cmp r4, #0
             jmpStack[jmpStackPos++] = size;
             code[size++] = 0xe320F000; // temp NOP
             break;
         case OP_JNZ:
             const int matchingJZ = jmpStack[--jmpStackPos];
-            code[size++] = 0xE3530000; // cmp r3, #0
+            code[size++] = 0xE3540000; // cmp r4, #0
             code[size] = ( (0b11010 << 24) | ( ((matchingJZ - (size+2))) & 0xFFFFFF) ); // bne 
             code[matchingJZ] = ( (0b1010 << 24) | ( (((size-1) - matchingJZ )) & 0xFFFFFF) ); // beq
             size++;
@@ -222,7 +215,8 @@ void jitCompile(const char* path, void* memory) {
     }
     code[size++] = ARM_ADDIMM(SP, SP, 48); // add sp, sp, #48
     code[size++] = 0xE28DDC75; // add sp, sp, #29952
-    code[size++] = 0xE8BD8038; // pop {r3, r4, r5, pc}
+    code[size++] = 0xE8BD8070; // pop {r4, r5, r6, pc}
+    
     memcpy(memory, code, size * sizeof(u32));
 
     if(jmpStackPos != 0) {
