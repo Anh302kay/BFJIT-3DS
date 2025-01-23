@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <malloc.h>
 
-#include <assert.h>
+#include "filesystem.h"
 #include "utils.h"
 
 enum {
@@ -85,6 +85,8 @@ void generateCode(void* memory) {
         ? ((abs(index - size-2) * 4 ) & 0xFFF) \ 
         : (( (index - size-2) * 4 ) & 0xFFF ) | ( 1 << 23 ) ) );
 
+#define ARM_CMPIMM(reg, num) ( 0xE3500000 | ( reg << 16) | (num) )
+
  int parseCode(const char* path) {
     FILE* file = fopen(path, "r");
     if (!file) {
@@ -112,7 +114,7 @@ void generateCode(void* memory) {
                 size += 1;
                 break;
             case OP_OUTPUT:
-                size += 4;
+                size += 2;
                 break;
             case OP_INPUT:
                 break;
@@ -197,13 +199,13 @@ void jitCompile(const char* path, void* memory) {
         case OP_INPUT:
             break;
         case OP_JZ:
-            code[size++] = 0xE3540000; // cmp r4, #0
+            code[size++] = ARM_CMPIMM(R4, 0);
             jmpStack[jmpStackPos++] = size;
             code[size++] = 0xe320F000; // temp NOP
             break;
         case OP_JNZ:
             const int matchingJZ = jmpStack[--jmpStackPos];
-            code[size++] = 0xE3540000; // cmp r4, #0
+            code[size++] = ARM_CMPIMM(R4, 0);
             code[size] = ( (0b11010 << 24) | ( ((matchingJZ - (size+2))) & 0xFFFFFF) ); // bne 
             code[matchingJZ] = ( (0b1010 << 24) | ( (((size-1) - matchingJZ )) & 0xFFFFFF) ); // beq
             size++;
@@ -234,6 +236,13 @@ typedef int (*JitFunction)();
 int main() {
     gfxInitDefault();
     consoleInit(GFX_TOP, NULL);
+    PrintConsole top;
+    PrintConsole bottom;
+    consoleInit(GFX_TOP, &top);
+    consoleInit(GFX_BOTTOM, &bottom);
+    hidSetRepeatParameters(1500, 1750);
+
+    consoleSelect(&top);
 
 	_InitializeSvcHack();
     size_t memorySize = 0x1000; // 4 KB
@@ -242,6 +251,39 @@ int main() {
         gfxExit();
         return -1;
     }
+
+    // char filePath[MAXFILELENGTH] = {0};
+
+    consoleSelect(&bottom);
+    Files* fileList = openDirectory("/3ds");
+    Files* currentFile = fileList;
+
+    while(aptMainLoop())
+	{
+        hidScanInput();
+        u32 kRepeat = hidKeysDownRepeat();
+		if(kRepeat & KEY_START)
+			break;
+        
+        if(kRepeat & KEY_UP) {
+            if(currentFile->lastEnt != NULL)
+                currentFile = currentFile->lastEnt;
+        } else if(kRepeat & KEY_DOWN) {
+            if(currentFile->nextEnt != NULL)
+                currentFile = currentFile->nextEnt;
+        }
+        if(kRepeat & KEY_A) 
+        {
+            if(currentFile->isDirectory) {
+                openNewDirectory(fileList, currentFile);
+            }
+        }
+
+        printf("%s              \r", currentFile->name);
+
+	}
+
+    consoleSelect(&top);
 
     // generateCode(memory);
     jitCompile("/bf.txt", memory);
@@ -260,7 +302,7 @@ int main() {
 			break;
 
 	}
-
+    freeDirectory(fileList);
 	free(memory);
     gfxExit();
     return 0;
