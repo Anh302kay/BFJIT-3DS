@@ -255,7 +255,7 @@ int main() {
     // char filePath[MAXFILELENGTH] = {0};
 
     consoleSelect(&bottom);
-    Files* fileList = openDirectory("/3ds");
+    Files* fileList = openDirectory("3ds/SonicMania");
     Files* currentFile = fileList;
 
     while(aptMainLoop())
@@ -278,6 +278,8 @@ int main() {
                 openNewDirectory(fileList, currentFile);
             }
         }
+        if(kRepeat & KEY_B)
+            openPreviousDirectory(fileList, currentFile);
 
         printf("%s              \r", currentFile->name);
 

@@ -78,21 +78,11 @@ Files* openDirectory(const char* path)
     return head;
 }
 
-void openNewDirectory(Files* head, Files* newDir)
+static void loadDirectory(Files* head, const char* path)
 {
     DIR* dir;
     struct dirent* dirent;
-
-    char path[512];
-    strncpy(path, newDir->path, MAXFILELENGTH);
-    path[strnlen(path, MAXFILELENGTH)] = '/';
-    strncat(path, newDir->name, MAXFILELENGTH-2);
     dir = opendir(path);
-
-    // if(dir == NULL)
-        // return NULL;
-
-    newDir = head;
 
     Files* current = head;
 
@@ -123,4 +113,21 @@ void openNewDirectory(Files* head, Files* newDir)
         freeDirectory(current->nextEnt);
 
     closedir(dir);
+}
+
+void openNewDirectory(Files* head, Files* newDir)
+{
+    char path[512];
+    strncpy(path, newDir->path, MAXFILELENGTH);
+    strncat(path, newDir->name, MAXFILELENGTH);
+    newDir = head;
+    loadDirectory(head, path);
+}
+
+void openPreviousDirectory(Files* head, Files* current) 
+{
+    current = head;
+    char* slash = getSlash(head->path);
+    slash[0] = '\0';
+    loadDirectory(head, head->path);
 }
