@@ -255,7 +255,7 @@ int main() {
     // char filePath[MAXFILELENGTH] = {0};
 
     consoleSelect(&bottom);
-    Files* fileList = openDirectory("3ds/SonicMania");
+    Files* fileList = openDirectory("/3ds");
     Files* currentFile = fileList;
 
     while(aptMainLoop())

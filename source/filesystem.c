@@ -84,6 +84,10 @@ static void loadDirectory(Files* head, const char* path)
     struct dirent* dirent;
     dir = opendir(path);
 
+    // if(dir == NULL)
+        // return NULL;
+
+    // newDir = head;
     Files* current = head;
 
     while(( dirent = readdir(dir) ) != NULL) {
@@ -119,7 +123,9 @@ void openNewDirectory(Files* head, Files* newDir)
 {
     char path[512];
     strncpy(path, newDir->path, MAXFILELENGTH);
-    strncat(path, newDir->name, MAXFILELENGTH);
+    // if(path[1] != '\0');
+    path[strnlen(path, MAXFILELENGTH)] = '/';
+    strncat(path, newDir->name, MAXFILELENGTH-2);
     newDir = head;
     loadDirectory(head, path);
 }
