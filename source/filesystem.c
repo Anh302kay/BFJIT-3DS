@@ -36,6 +36,7 @@ void freeDirectory(Files* head)
         head = head->nextEnt;
         free(temp);
     }
+    head = NULL;
 }
 
 Files* openDirectory(const char* path)
@@ -90,6 +91,8 @@ static void loadDirectory(Files* head, const char* path)
     // newDir = head;
     Files* current = head;
 
+    bool notEnough = false;
+
     while(( dirent = readdir(dir) ) != NULL) {
         archive_dir_t* dirSt = (archive_dir_t*)dir->dirData->dirStruct;
         FS_DirectoryEntry* entry = &dirSt->entry_data[dirSt->index];
@@ -100,6 +103,12 @@ static void loadDirectory(Files* head, const char* path)
         printf("%s/%s\n", path, dirent->d_name);
 
         if(current->nextEnt == NULL) {
+            if(!notEnough) {
+                strncpy(current->path, path, MAXFILELENGTH);
+                strncpy(current->name, dirent->d_name, MAXFILELENGTH);
+                current->isDirectory = entry->attributes & FS_ATTRIBUTE_DIRECTORY;
+                notEnough = true;
+            }
             Files* file = createEntry(path, dirent->d_name, MAXFILELENGTH, entry->attributes & FS_ATTRIBUTE_DIRECTORY);
             current->nextEnt = file;
             file->lastEnt = current;
@@ -113,8 +122,8 @@ static void loadDirectory(Files* head, const char* path)
 
 
     }
-    if(current->nextEnt != NULL)
-        freeDirectory(current->nextEnt);
+    if(!notEnough)
+        freeDirectory(current);
 
     closedir(dir);
 }
@@ -123,7 +132,7 @@ void openNewDirectory(Files* head, Files* newDir)
 {
     char path[512];
     strncpy(path, newDir->path, MAXFILELENGTH);
-    // if(path[1] != '\0');
+    // if(path[1] != '\0')
     path[strnlen(path, MAXFILELENGTH)] = '/';
     strncat(path, newDir->name, MAXFILELENGTH-2);
     newDir = head;
