@@ -6,17 +6,7 @@
 
 #include "filesystem.h"
 #include "utils.h"
-
-enum {
-    OP_RIGHT = '>',
-    OP_LEFT = '<',
-    OP_ADD = '+',
-    OP_SUB = '-',
-    OP_OUTPUT = '.',
-    OP_INPUT = ',',
-    OP_JZ = '[',
-    OP_JNZ = ']'
-};
+#include "opcode.h"
 
 enum {
     R0 = 0,
@@ -87,13 +77,13 @@ void generateCode(void* memory) {
 
 #define ARM_CMPIMM(reg, num) ( 0xE3500000 | ( reg << 16) | (num) )
 
- int parseCode(const char* path) {
+int parseCode(Code* code, const char* path) {
     FILE* file = fopen(path, "r");
     if (!file) {
         printf("Could not open file: %s\n", path);
         return -1;
     }
-    int size = 0;
+    code->asmSize = 18;
     int ch;
     while((ch = fgetc(file))) {
         if(ch == EOF) {
@@ -101,28 +91,34 @@ void generateCode(void* memory) {
         }
         switch (ch)
         {
-            case OP_LEFT:
-                size +=2;
+            case ASCII_LEFT:
+                code->asmSize +=2;
+                addOpcode(code, OP_LEFT);
                 break;
-            case OP_RIGHT:
-                size +=2;
+            case ASCII_RIGHT:
+                code->asmSize +=2;
+                addOpcode(code, OP_RIGHT);
                 break;
-            case OP_ADD:
-                size += 1;
+            case ASCII_ADD:
+                code->asmSize += 1;
+                addOpcode(code, OP_ADD);
                 break;
-            case OP_SUB:
-                size += 1;
+            case ASCII_SUB:
+                code->asmSize += 1;
                 break;
-            case OP_OUTPUT:
-                size += 2;
+            case ASCII_OUTPUT:
+                code->asmSize += 2;
+                addOpcode(code, OP_OUTPUT);
                 break;
-            case OP_INPUT:
+            case ASCII_INPUT:
                 break;
-            case OP_JZ:
-                size += 2;
+            case ASCII_JZ:
+                code->asmSize += 2;
+                addOpcode(code, OP_JZ);
                 break;
-            case OP_JNZ:
-                size += 2;
+            case ASCII_JNZ:
+                code->asmSize += 2;
+                addOpcode(code, OP_JNZ);
                 break;
             default:
                 break;
@@ -258,6 +254,9 @@ int main() {
     Files* fileList = openDirectory("");
     Files* currentFile = fileList;
 
+    Code jitCode;
+    initCode(&jitCode, 256);
+
     while(aptMainLoop())
 	{
         hidScanInput();
@@ -278,6 +277,9 @@ int main() {
                 consoleClear();
                 openNewDirectory(fileList, currentFile);
                 currentFile = fileList;
+            }
+            else {
+
             }
         }
         if(kRepeat & KEY_B) {

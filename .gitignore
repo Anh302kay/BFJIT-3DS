@@ -1,6 +1,7 @@
 build
 .vscode
 .clangd
+# if ur curious my folder is called jitgpt bc i asked chatgpt to explain the jit initialisation code
 jitgpt.*
 test.*
 main.*
