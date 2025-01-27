@@ -37,32 +37,10 @@ void* allocateExecMemory(size_t size) {
     return memory;
 }
 
-int getNumber() {
-    return 42;
-}
-
 static inline int nearest4096(int value) {
     return (value + 4095) & ~0xFFF;
 }
 
-//to get raw machine code of assembly instructios use the arm architecture reference manual
-void generateCode(void* memory) {
-    void* addr = getNumber;
-    printf("getNumber() address: %d\n", addr);
-    
-    u32 code[] = {
-        (u32)addr, // Placeholder for the address of getNumber
-	    0xE51f000c, // ldr r0, [pc, #-12]
-	    0xE52de004, // push {lr}
-        0xE12FFF30,  // blx r0
-        0xE3A01003,  // MOV R1, #3
-        0xE0000190,  // MUL R0, R0, R1   
-        0xE49df004   // pop PC
-    };
-    memcpy(memory, code, sizeof(code));
-    //__builtin___clear_cache(memory, memory + sizeof(code)); // Sync CPU cache
-	ctr_flush_invalidate_cache();
-}
 // where num is > 256 works normally otherwise bit stuff needed
 #define ARM_ADDIMM(dst, reg1, num) ((0b111000101 << 23) | (dst << 16) | (reg1 << 12) | (num))
 #define ARM_ADDSIMM(dst, reg1, num) ((0b111000101001 << 20) | (dst << 16) | (reg1 << 12) | (num))
@@ -87,9 +65,10 @@ int parseCode(Code* code, const char* path) {
         printf("Could not open file: %s\n", path);
         return -1;
     }
-    int jmpStack[256];
-    int jmpStackPos = 0;
-    code->asmSize = 18;
+    // int jmpStack[256];
+    // int jmpStackPos = 0;
+    code->size = 0;
+    code->asmSize = 19;
     int ch;
     while((ch = fgetc(file))) {
         if(ch == EOF) {
@@ -120,16 +99,16 @@ int parseCode(Code* code, const char* path) {
             case ASCII_INPUT:
                 break;
             case ASCII_JZ:
-                jmpStack[jmpStackPos++] = code->asmSize+1;
                 code->asmSize += 2;
                 addOpcode(code, OP_JZ);
+                // jmpStack[jmpStackPos++] = code->size-1;
                 break;
             case ASCII_JNZ:
-                const int matchingJZ = jmpStack[--jmpStackPos];
-                code->code[code->asmSize+1].size = ( (0b11010 << 24) | ( ((matchingJZ - (code->asmSize+3))) & 0xFFFFFF) ); // bne 
-                code->code[matchingJZ].size = ( (0b1010 << 24) | ( (((code->asmSize) - matchingJZ )) & 0xFFFFFF) ); // beq
                 code->asmSize += 2;
                 addOpcode(code, OP_JNZ);
+                // const int matchingJZ = jmpStack[--jmpStackPos];
+                // code->code[matchingJZ].size = ( (0b1010 << 24) | ( (((code->size-2) - matchingJZ )) & 0xFFFFFF) ); // beq
+                // code->code[code->size-1].size = ( (0b11010 << 24) | ( ((matchingJZ - (code->size+1))) & 0xFFFFFF) ); // bne 
                 break;
             default:
                 break;
@@ -140,24 +119,11 @@ int parseCode(Code* code, const char* path) {
     return 1;
 }
 
-void jitCompile(const char* path, void* memory) {
-    FILE* file = fopen(path, "r");
-    if (!file) {
-        printf("Could not open file: %s\n", path);
-        ((u32*)memory)[5] = ARM_MOVREG(R0, PC);
-        ((u32*)memory)[6] = ARM_BLX(LR);
-        return;
-    }
-    fseek(file, 0, SEEK_END);
-    int fSize = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    //  r4, r5, lr
-
+void jitCompile(Code* s_code, void* memory) {
+    u32 code[s_code->asmSize];
     int jmpStack[256];
     int jmpStackPos = 0;
 
-    u32 code[fSize+100];
     int size = 5;
     code[2] = (u32)putchar; // address
     code[3] = (u32)memset; // address
@@ -171,19 +137,15 @@ void jitCompile(const char* path, void* memory) {
     size++;
     code[size] = ARM_LOADADDR(R4, 3); // ldr r4, [pc, #-40]
     size++;
-    // code[size++] = 0xE51F4028; // ldr r4, [pc, #-40]
     code[size++] = ARM_BLX(R4); 
     code[size++] = ARM_MOVIMM(R4, 0);
     code[size++] = ARM_MOVREG(R5, SP);
     code[size] = ARM_LOADADDR(R6, 2);
     size++;
 
-    int ch;
-    while((ch = fgetc(file))) {
-        if(ch == EOF) {
-            break;
-        }
-        switch (ch)
+    for(int i = 0; i < s_code->size; i++) {
+        const u8 opcode = s_code->code[i].opcode;
+        switch (opcode)
         {
         case OP_LEFT:
             code[size++] = 0xE4454001;// strb r4, [r5], #-1
@@ -194,10 +156,10 @@ void jitCompile(const char* path, void* memory) {
             code[size++] = 0xE5D54000; // ldrb r4, [r5]
             break;
         case OP_ADD:
-            code[size++] = ARM_ADDSIMM(R4, R4, 1);
+            code[size++] = ARM_ADDIMM(R4, R4, 1);
             break;
         case OP_SUB:
-            code[size++] = ARM_SUBSIMM(R4, R4, 1);
+            code[size++] = ARM_SUBIMM(R4, R4, 1);
             break;
         case OP_OUTPUT:
             code[size++] = ARM_MOVREG(R0, R4);
@@ -208,7 +170,7 @@ void jitCompile(const char* path, void* memory) {
         case OP_JZ:
             code[size++] = ARM_CMPIMM(R4, 0);
             jmpStack[jmpStackPos++] = size;
-            code[size++] = 0xe320F000; // temp NOP
+            code[size++] = 0xE320F000; // temp NOP
             break;
         case OP_JNZ:
             const int matchingJZ = jmpStack[--jmpStackPos];
@@ -226,16 +188,17 @@ void jitCompile(const char* path, void* memory) {
     code[size++] = 0xE28DDC75; // add sp, sp, #29952
     code[size++] = 0xE8BD8070; // pop {r4, r5, r6, pc}
     
-    memcpy(memory, code, size * sizeof(u32));
-
     if(jmpStackPos != 0) {
         printf("Unbalanced amount of loops");
-        ((u32*)memory)[5] = ARM_BLX(LR);
+        code[5] = ARM_BLX(LR);
+        s_code->asmSize = 6;
     }
-    _SetMemoryPermission(memory, 4096, MEMPERM_READ | MEMPERM_EXECUTE);
+
+    memcpy(memory, code, s_code->asmSize * sizeof(u32));
+
+    // _SetMemoryPermission(memory, 4096, MEMPERM_READ | MEMPERM_EXECUTE);
 	ctr_flush_invalidate_cache();
 
-    fclose(file);
 }
 
 static inline void drawConfirm(const char* name) {
@@ -270,7 +233,7 @@ int main() {
     // char filePath[MAXFILELENGTH] = {0};
 
     consoleSelect(&bottom);
-    Files* fileList = openDirectory("");
+    Files* fileList = openDirectory("sdmc:/3ds");
     Files* currentFile = fileList;
 
     Code jitCode;
@@ -278,7 +241,7 @@ int main() {
 
     char oldLocation[512];
     int mode = 0;
-    bool selection = false; // false = no, true = yes
+    bool selection = true; // false = no, true = yes
     while(aptMainLoop())
 	{
         hidScanInput();
@@ -310,12 +273,13 @@ int main() {
                 consoleClear();
                 strncpy(oldLocation, getSlash(currentFile->path)+1, 512);
                 openPreviousDirectory(fileList, currentFile);
-                for(Files* file = fileList; file != NULL; file = file->nextEnt) {
-                    if(strcmp(oldLocation, file->name) == 0) {
-                        currentFile = file;
-                        break;
-                    }
-                }
+                currentFile = fileList;
+                // for(Files* file = fileList; file != NULL; file = file->nextEnt) {
+                //     if(strcmp(oldLocation, file->name) == 0) {
+                //         currentFile = file;
+                //         break;
+                //     }
+                // }
                 
             }
         
@@ -333,11 +297,15 @@ int main() {
             }
             break;
         case 2:
-                    consoleSelect(&top);
+            consoleSelect(&top);
             printf("Compiling: %s\n", currentFile->name);
             parseCode(&jitCode, oldLocation);
-            jitCompile("/bf.txt", memory);
+            jitCompile(&jitCode, memory);
             JitFunction func = (JitFunction)memory+(5*4);
+            consoleSelect(&top);
+            func();
+            consoleSelect(&bottom);
+            mode = 0;
             break;
         
         default:
@@ -349,15 +317,13 @@ int main() {
 
     consoleSelect(&top);
 
-    // generateCode(memory);
-    jitCompile("/bf.txt", memory);
+    parseCode(&jitCode, "/bf.txt");
+    jitCompile(&jitCode, memory);
     JitFunction func = (JitFunction)memory+(5*4);
 
     u64 start = svcGetSystemTick();
     int result = func(); 
     u64 end = svcGetSystemTick();
-	printf("JIT code returned: %p\n", result);
-	printf("Jit Address:       %p\n", memory+(5*4));
 	printf("Time: %lld\n", end-start);
 	while(aptMainLoop())
 	{

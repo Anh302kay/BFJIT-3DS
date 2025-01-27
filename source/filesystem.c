@@ -31,7 +31,7 @@ void freeDirectory(Files* head)
         head->lastEnt->nextEnt = NULL;
 
     Files* temp;
-    while(head->nextEnt) {
+    while(head->nextEnt != NULL) {
         temp = head;
         head = head->nextEnt;
         free(temp);
