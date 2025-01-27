@@ -11,7 +11,7 @@ void initCode(Code* code, size_t capacity)
     code->capacity = capacity;
 }
 
-inline void addOpcode(Code* code, const u8 opcode)
+void addOpcode(Code* code, const u8 opcode)
 {
     if(code->size >= code->capacity) {
         code->capacity *= 2;
@@ -25,4 +25,5 @@ inline void addOpcode(Code* code, const u8 opcode)
 inline void freeCode(Code* code)
 {
     free(code->code);
+    code->code = NULL;
 }

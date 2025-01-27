@@ -40,5 +40,5 @@ typedef struct Code {
 } Code;
 
 void initCode(Code* code, size_t capacity);
-inline void addOpcode(Code* code, const u8 opcode);
+void addOpcode(Code* code, const u8 opcode);
 void freeCode(Code* code);

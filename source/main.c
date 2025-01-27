@@ -41,6 +41,10 @@ int getNumber() {
     return 42;
 }
 
+static inline int nearest4096(int value) {
+    return (value + 4095) & ~0xFFF;
+}
+
 //to get raw machine code of assembly instructios use the arm architecture reference manual
 void generateCode(void* memory) {
     void* addr = getNumber;
@@ -72,7 +76,7 @@ void generateCode(void* memory) {
 #define ARM_BLX(reg1) ((0b11100001001011111111111100110000) | (reg1))
 // #define ARM_LOADADDR(reg1, index) ((0b111001010001 << 20) | (PC << 16) | (reg1 << 12) | (abs(index - size-2) * 4 ) & 0xFFF)
 #define ARM_LOADADDR(reg1, index) ((0b111001010001 << 20) | (PC << 16) | (reg1 << 12) | ( ((int)(index - size-2) * 4 ) < 0\ 
-        ? ((abs(index - size-2) * 4 ) & 0xFFF) \ 
+        ? ((abs(index - size-2) * 4 ) & 0xFFF)\ 
         : (( (index - size-2) * 4 ) & 0xFFF ) | ( 1 << 23 ) ) );
 
 #define ARM_CMPIMM(reg, num) ( 0xE3500000 | ( reg << 16) | (num) )
@@ -83,6 +87,8 @@ int parseCode(Code* code, const char* path) {
         printf("Could not open file: %s\n", path);
         return -1;
     }
+    int jmpStack[256];
+    int jmpStackPos = 0;
     code->asmSize = 18;
     int ch;
     while((ch = fgetc(file))) {
@@ -105,6 +111,7 @@ int parseCode(Code* code, const char* path) {
                 break;
             case ASCII_SUB:
                 code->asmSize += 1;
+                addOpcode(code, OP_SUB);
                 break;
             case ASCII_OUTPUT:
                 code->asmSize += 2;
@@ -113,10 +120,14 @@ int parseCode(Code* code, const char* path) {
             case ASCII_INPUT:
                 break;
             case ASCII_JZ:
+                jmpStack[jmpStackPos++] = code->asmSize+1;
                 code->asmSize += 2;
                 addOpcode(code, OP_JZ);
                 break;
             case ASCII_JNZ:
+                const int matchingJZ = jmpStack[--jmpStackPos];
+                code->code[code->asmSize+1].size = ( (0b11010 << 24) | ( ((matchingJZ - (code->asmSize+3))) & 0xFFFFFF) ); // bne 
+                code->code[matchingJZ].size = ( (0b1010 << 24) | ( (((code->asmSize) - matchingJZ )) & 0xFFFFFF) ); // beq
                 code->asmSize += 2;
                 addOpcode(code, OP_JNZ);
                 break;
@@ -126,7 +137,7 @@ int parseCode(Code* code, const char* path) {
     }
     fclose(file);
 
-    return size;
+    return 1;
 }
 
 void jitCompile(const char* path, void* memory) {
@@ -227,11 +238,19 @@ void jitCompile(const char* path, void* memory) {
     fclose(file);
 }
 
+static inline void drawConfirm(const char* name) {
+    printf("\x1b[1;5H\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB");
+    printf("\x1b[2;5H\xBA             RUN             \xBA");
+    printf("\x1b[3;5H\xBA                             \xBA");
+    printf("\x1b[3;%DH%s", 31/2 - strnlen(name, 512)/2 + 5, name);
+    printf("\x1b[4;5H\xBA                             \xBA");
+    printf("\x1b[5;5H\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC");
+}
+
 typedef int (*JitFunction)();
 
 int main() {
     gfxInitDefault();
-    consoleInit(GFX_TOP, NULL);
     PrintConsole top;
     PrintConsole bottom;
     consoleInit(GFX_TOP, &top);
@@ -257,39 +276,75 @@ int main() {
     Code jitCode;
     initCode(&jitCode, 256);
 
+    char oldLocation[512];
+    int mode = 0;
+    bool selection = false; // false = no, true = yes
     while(aptMainLoop())
 	{
         hidScanInput();
         u32 kRepeat = hidKeysDownRepeat();
 		if(kRepeat & KEY_START)
 			break;
-        
-        if(kRepeat & KEY_UP) {
-            if(currentFile->lastEnt != NULL)
-                currentFile = currentFile->lastEnt;
-        } else if(kRepeat & KEY_DOWN) {
-            if(currentFile->nextEnt != NULL)
-                currentFile = currentFile->nextEnt;
-        }
-        if(kRepeat & KEY_A) 
-        {
-            if(currentFile->isDirectory) {
+
+        switch (mode) {
+        case 0:
+            if(kRepeat & KEY_UP) {
+                if(currentFile->lastEnt != NULL)
+                    currentFile = currentFile->lastEnt;
+            } else if(kRepeat & KEY_DOWN) {
+                if(currentFile->nextEnt != NULL)
+                    currentFile = currentFile->nextEnt;
+            }
+            if(kRepeat & KEY_A) 
+            {
+                if(currentFile->isDirectory) {
+                    consoleClear();
+                    openNewDirectory(fileList, currentFile);
+                    currentFile = fileList;
+                }
+                else {
+                    mode = 1;
+                }
+            }
+            else if(kRepeat & KEY_B) {
                 consoleClear();
-                openNewDirectory(fileList, currentFile);
-                currentFile = fileList;
+                strncpy(oldLocation, getSlash(currentFile->path)+1, 512);
+                openPreviousDirectory(fileList, currentFile);
+                for(Files* file = fileList; file != NULL; file = file->nextEnt) {
+                    if(strcmp(oldLocation, file->name) == 0) {
+                        currentFile = file;
+                        break;
+                    }
+                }
+                
             }
-            else {
+        
+            printf("%s              \r", currentFile->name);
+            break;
+        case 1:
 
+            drawConfirm(currentFile->name);
+            if(kRepeat & KEY_A && selection) {
+                strncpy(oldLocation, currentFile->path, 512);
+                strncat(oldLocation, currentFile->name, 512);
+                mode = 2;
+            } else if(kRepeat & KEY_B) {
+                mode = 0;
             }
-        }
-        if(kRepeat & KEY_B) {
-            consoleClear();
-            openPreviousDirectory(fileList, currentFile);
-            currentFile = fileList;
+            break;
+        case 2:
+                    consoleSelect(&top);
+            printf("Compiling: %s\n", currentFile->name);
+            parseCode(&jitCode, oldLocation);
+            jitCompile("/bf.txt", memory);
+            JitFunction func = (JitFunction)memory+(5*4);
+            break;
+        
+        default:
+            break;
         }
 
-        printf("%s              \r", currentFile->name);
-
+        gspWaitForVBlank();
 	}
 
     consoleSelect(&top);
@@ -311,6 +366,9 @@ int main() {
 			break;
 
 	}
+
+    freeCode(&jitCode);
+
     freeDirectory(fileList);
 	free(memory);
     gfxExit();

@@ -105,7 +105,7 @@ static void loadDirectory(Files* head, const char* path)
         if(current->nextEnt == NULL) {
             if(!notEnough) {
                 strncpy(current->path, path, MAXFILELENGTH);
-                strncpy(current->name, dirent->d_name, MAXFILELENGTH);
+                strncpy(current->name, dirent->d_name, 256);
                 current->isDirectory = entry->attributes & FS_ATTRIBUTE_DIRECTORY;
                 notEnough = true;
             }
@@ -134,7 +134,7 @@ void openNewDirectory(Files* head, Files* newDir)
     strncpy(path, newDir->path, MAXFILELENGTH);
     // if(path[1] != '\0')
     path[strnlen(path, MAXFILELENGTH)] = '/';
-    strncat(path, newDir->name, MAXFILELENGTH-2);
+    strncat(path, newDir->name, MAXFILELENGTH-1);
     newDir = head;
     loadDirectory(head, path);
 }
