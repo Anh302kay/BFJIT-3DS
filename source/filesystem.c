@@ -41,26 +41,41 @@ void freeDirectory(Files* head)
 
 Files* openDirectory(const char* path)
 {
-    DIR* dir;
-    struct dirent* dirent;
-    dir = opendir(path);
+    FS_Archive sdmcArchive;
+    FSUSER_OpenArchive(&sdmcArchive, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""));
 
-    if(dir == NULL)
-        return NULL;
+    Handle dirHandle;
+    FS_Archive archive;
+    FSUSER_OpenDirectory(&dirHandle, sdmcArchive, fsMakePath(PATH_ASCII, path));
+    u32 entriesRead = 1;
+    FS_DirectoryEntry entry;
 
     Files* head = NULL;
     Files* current = NULL;
 
-    while(( dirent = readdir(dir) ) != NULL) {
-        archive_dir_t* dirSt = (archive_dir_t*)dir->dirData->dirStruct;
-        FS_DirectoryEntry* entry = &dirSt->entry_data[dirSt->index];
+    while(entriesRead) {
+        entriesRead = 0;
+        FSDIR_Read(dirHandle, &entriesRead, 1, &entry);
 
-        if(entry->attributes & FS_ATTRIBUTE_HIDDEN)
+        if(!entriesRead)
+            break;
+            
+        if(entry.attributes & FS_ATTRIBUTE_HIDDEN)
             continue;
         
-        Files* file = createEntry(path, dirent->d_name, 256, entry->attributes & FS_ATTRIBUTE_DIRECTORY);
+        char name[262] = {0};
 
-        printf("%s/%s\n", path, dirent->d_name);
+        for(int i = 0; i < 262; i++) {
+            if(entry.name[i] > 255)
+                name[i] = 2;
+            name[i] = entry.name[i];
+            if(entry.name[i] == 0)
+                break;
+        }
+
+        Files* file = createEntry(path, name, 256, entry.attributes & FS_ATTRIBUTE_DIRECTORY);
+
+        printf("%s%s\n", path, name);
 
         if(head == NULL)
             head = file;
@@ -75,48 +90,63 @@ Files* openDirectory(const char* path)
 
     }
 
-    closedir(dir);
+    FSDIR_Close(dirHandle);
+    svcCloseHandle(dirHandle);
+    FSUSER_CloseArchive(sdmcArchive);
     return head;
 }
 
 static void loadDirectory(Files* head, const char* path)
 {
-    DIR* dir;
-    struct dirent* dirent;
-    dir = opendir(path);
+    FS_Archive sdmcArchive;
+    FSUSER_OpenArchive(&sdmcArchive, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""));
 
-    // if(dir == NULL)
-        // return NULL;
-
-    // newDir = head;
+    Handle dirHandle;
+    FS_Archive archive;
+    FSUSER_OpenDirectory(&dirHandle, sdmcArchive, fsMakePath(PATH_ASCII, path));
+    u32 entriesRead = 1;
+    FS_DirectoryEntry entry;
     Files* current = head;
 
     bool notEnough = false;
 
-    while(( dirent = readdir(dir) ) != NULL) {
-        archive_dir_t* dirSt = (archive_dir_t*)dir->dirData->dirStruct;
-        FS_DirectoryEntry* entry = &dirSt->entry_data[dirSt->index];
+    while(entriesRead) {
+        entriesRead = 0;
+        FSDIR_Read(dirHandle, &entriesRead, 1, &entry);
 
-        if(entry->attributes & FS_ATTRIBUTE_HIDDEN)
+        if(!entriesRead)
+            break;
+
+        if(entry.attributes & FS_ATTRIBUTE_HIDDEN)
             continue;
 
-        printf("%s/%s\n", path, dirent->d_name);
+        char name[262] = {0};
+
+        for(int i = 0; i < 262; i++) {
+            if(entry.name[i] > 255)
+                name[i] = 2;
+            name[i] = entry.name[i];
+            if(entry.name[i] == 0)
+                break;
+        }
+
+        printf("%s/%s\n", path, name);
 
         if(current->nextEnt == NULL) {
             if(!notEnough) {
                 strncpy(current->path, path, MAXFILELENGTH);
-                strncpy(current->name, dirent->d_name, 256);
-                current->isDirectory = entry->attributes & FS_ATTRIBUTE_DIRECTORY;
+                strncpy(current->name, name, 256);
+                current->isDirectory = entry.attributes & FS_ATTRIBUTE_DIRECTORY;
                 notEnough = true;
             }
-            Files* file = createEntry(path, dirent->d_name, MAXFILELENGTH, entry->attributes & FS_ATTRIBUTE_DIRECTORY);
+            Files* file = createEntry(path, name, MAXFILELENGTH, entry.attributes & FS_ATTRIBUTE_DIRECTORY);
             current->nextEnt = file;
             file->lastEnt = current;
             current = file;
         } else {
             strncpy(current->path, path, MAXFILELENGTH);
-            strncpy(current->name, dirent->d_name, MAXFILELENGTH);
-            current->isDirectory = entry->attributes & FS_ATTRIBUTE_DIRECTORY;
+            strncpy(current->name, name, MAXFILELENGTH);
+            current->isDirectory = entry.attributes & FS_ATTRIBUTE_DIRECTORY;
             current = current->nextEnt;
         }
 
@@ -125,17 +155,20 @@ static void loadDirectory(Files* head, const char* path)
     if(!notEnough)
         freeDirectory(current);
 
-    closedir(dir);
+    FSDIR_Close(dirHandle);
+    svcCloseHandle(dirHandle);
+    FSUSER_CloseArchive(sdmcArchive);
 }
 
 void openNewDirectory(Files* head, Files* newDir)
 {
     char path[512];
     strncpy(path, newDir->path, MAXFILELENGTH);
-    // if(path[1] != '\0')
+    if(strnlen(path, MAXFILELENGTH) > 1)
     path[strnlen(path, MAXFILELENGTH)] = '/';
     strncat(path, newDir->name, MAXFILELENGTH-1);
     newDir = head;
+    printf("\n%s\n", path);
     loadDirectory(head, path);
 }
 
@@ -144,5 +177,7 @@ void openPreviousDirectory(Files* head, Files* current)
     current = head;
     char* slash = getSlash(head->path);
     slash[0] = '\0';
+    if(strnlen(head->path, 5) == 0)
+        strncpy(head->path, "/", MAXFILELENGTH);
     loadDirectory(head, head->path);
 }

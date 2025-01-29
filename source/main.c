@@ -233,7 +233,7 @@ int main() {
     // char filePath[MAXFILELENGTH] = {0};
 
     consoleSelect(&bottom);
-    Files* fileList = openDirectory("sdmc:/3ds");
+    Files* fileList = openDirectory("/3ds");
     Files* currentFile = fileList;
 
     Code jitCode;
@@ -245,7 +245,9 @@ int main() {
     while(aptMainLoop())
 	{
         hidScanInput();
-        u32 kRepeat = hidKeysDownRepeat();
+        const u32 kRepeat = hidKeysDownRepeat();
+        const u32 kDown = hidKeysDown();
+
 		if(kRepeat & KEY_START)
 			break;
 
@@ -258,7 +260,7 @@ int main() {
                 if(currentFile->nextEnt != NULL)
                     currentFile = currentFile->nextEnt;
             }
-            if(kRepeat & KEY_A) 
+            if(kDown & KEY_A) 
             {
                 if(currentFile->isDirectory) {
                     consoleClear();
@@ -269,17 +271,16 @@ int main() {
                     mode = 1;
                 }
             }
-            else if(kRepeat & KEY_B) {
+            else if(kDown & KEY_B) {
                 consoleClear();
                 strncpy(oldLocation, getSlash(currentFile->path)+1, 512);
                 openPreviousDirectory(fileList, currentFile);
-                currentFile = fileList;
-                // for(Files* file = fileList; file != NULL; file = file->nextEnt) {
-                //     if(strcmp(oldLocation, file->name) == 0) {
-                //         currentFile = file;
-                //         break;
-                //     }
-                // }
+                for(Files* file = fileList; file != NULL; file = file->nextEnt) {
+                    if(strcmp(oldLocation, file->name) == 0) {
+                        currentFile = file;
+                        break;
+                    }
+                }
                 
             }
         
