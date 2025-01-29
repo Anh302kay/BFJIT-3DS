@@ -5,6 +5,7 @@
 #include <malloc.h>
 
 #include "filesystem.h"
+#include "keyboard.h"
 #include "utils.h"
 #include "opcode.h"
 
@@ -68,7 +69,7 @@ int parseCode(Code* code, const char* path) {
     // int jmpStack[256];
     // int jmpStackPos = 0;
     code->size = 0;
-    code->asmSize = 19;
+    code->asmSize = 20;
     int ch;
     while((ch = fgetc(file))) {
         if(ch == EOF) {
@@ -97,6 +98,8 @@ int parseCode(Code* code, const char* path) {
                 addOpcode(code, OP_OUTPUT);
                 break;
             case ASCII_INPUT:
+                code->asmSize += 2;
+                addOpcode(code, OP_INPUT);
                 break;
             case ASCII_JZ:
                 code->asmSize += 2;
@@ -125,10 +128,11 @@ void jitCompile(Code* s_code, void* memory) {
     int jmpStackPos = 0;
 
     int size = 5;
+    code[1] = (u32)getKeyInput;
     code[2] = (u32)putchar; // address
     code[3] = (u32)memset; // address
     code[4] = 30000; // constant
-    code[size++] = 0xE92D4070; // push {r4, r5, r6, lr}
+    code[size++] = 0xE92D40F0; // push {r4, r5, r6, r7, lr}
     code[size++] = 0xE24DDC75; // sub sp, sp, #29952
     code[size++] = ARM_SUBIMM(SP, SP, 48);
     code[size++] = ARM_MOVREG(R0, SP);
@@ -141,6 +145,8 @@ void jitCompile(Code* s_code, void* memory) {
     code[size++] = ARM_MOVIMM(R4, 0);
     code[size++] = ARM_MOVREG(R5, SP);
     code[size] = ARM_LOADADDR(R6, 2);
+    size++;
+    code[size] = ARM_LOADADDR(R7, 1);
     size++;
 
     for(int i = 0; i < s_code->size; i++) {
@@ -166,6 +172,8 @@ void jitCompile(Code* s_code, void* memory) {
             code[size++] = ARM_BLX(R6);
             break;
         case OP_INPUT:
+            code[size++] = ARM_BLX(R7);
+            code[size++] = ARM_MOVREG(R4, R0);
             break;
         case OP_JZ:
             code[size++] = ARM_CMPIMM(R4, 0);
@@ -186,7 +194,7 @@ void jitCompile(Code* s_code, void* memory) {
     }
     code[size++] = ARM_ADDIMM(SP, SP, 48); // add sp, sp, #48
     code[size++] = 0xE28DDC75; // add sp, sp, #29952
-    code[size++] = 0xE8BD8070; // pop {r4, r5, r6, pc}
+    code[size++] = 0xE8BD80F0; // pop {r4, r5, r6, r7, pc}
     
     if(jmpStackPos != 0) {
         printf("Unbalanced amount of loops");
@@ -218,7 +226,10 @@ int main() {
     PrintConsole bottom;
     consoleInit(GFX_TOP, &top);
     consoleInit(GFX_BOTTOM, &bottom);
-    hidSetRepeatParameters(1500, 1750);
+    char bottomBuffer[40*30+1];
+    memset(bottomBuffer, ' ', 40*30+1);
+    bottomBuffer[40*30] = '\0';
+    hidSetRepeatParameters(1500, 1000);
 
     consoleSelect(&top);
 
@@ -236,8 +247,18 @@ int main() {
     Files* fileList = openDirectory("/3ds");
     Files* currentFile = fileList;
 
+    printf("Current Folder: %s/\n", currentFile->path);
+    for(Files* entry = fileList; entry != NULL; entry = entry->nextEnt) {
+        if(entry->isDirectory)
+            printf("%s/\n", entry->name);
+        else
+            printf("%s\n", entry->name);
+    }
+
     Code jitCode;
     initCode(&jitCode, 256);
+
+    int currentY = 1;
 
     char oldLocation[512];
     int mode = 0;
@@ -253,19 +274,52 @@ int main() {
 
         switch (mode) {
         case 0:
+            bottom.bg = 0;
+            bottom.fg = 7;
             if(kRepeat & KEY_UP) {
                 if(currentFile->lastEnt != NULL)
+                {
+                    printf("%s\r", currentFile->name);
                     currentFile = currentFile->lastEnt;
+                    currentY--;
+                }
             } else if(kRepeat & KEY_DOWN) {
                 if(currentFile->nextEnt != NULL)
+                {
+                    printf("%s\r", currentFile->name);
                     currentFile = currentFile->nextEnt;
+                    currentY++;
+                }
+            } else if(kDown & KEY_LEFT) {
+                currentFile = currentFile->lastEnt->lastEnt;
+                if(currentFile == NULL)
+                {
+                    printf("%s\r", currentFile->name);
+                    currentFile = fileList;
+                    currentY -= 2;
+                }
+            } else if(kDown & KEY_RIGHT) {
+                if(currentFile->nextEnt->nextEnt != NULL)
+                {
+                    printf("%s\r", currentFile->name);
+                    currentFile = currentFile->nextEnt->nextEnt;
+                    currentY += 2;
+                }
             }
             if(kDown & KEY_A) 
             {
                 if(currentFile->isDirectory) {
                     consoleClear();
+                    currentY = 1;
                     openNewDirectory(fileList, currentFile);
                     currentFile = fileList;
+                    printf("Current Folder: %s\n", currentFile->path);
+                    for(Files* entry = fileList; entry != NULL; entry = entry->nextEnt) {
+                        if(entry->isDirectory)
+                            printf("%s/\n", entry->name);
+                        else
+                            printf("%s\n", entry->name);
+                    }
                 }
                 else {
                     mode = 1;
@@ -275,16 +329,24 @@ int main() {
                 consoleClear();
                 strncpy(oldLocation, getSlash(currentFile->path)+1, 512);
                 openPreviousDirectory(fileList, currentFile);
+                printf("Current Folder: %s\n", currentFile->path);
                 for(Files* file = fileList; file != NULL; file = file->nextEnt) {
                     if(strcmp(oldLocation, file->name) == 0) {
                         currentFile = file;
-                        break;
+                        currentY = 1;
                     }
+                    if(file->isDirectory)
+                        printf("%s/\n", file->name);
+                    else
+                        printf("%s\n", file->name);
                 }
                 
             }
-        
-            printf("%s              \r", currentFile->name);
+            bottom.bg = 7;
+            bottom.fg = 0;
+            bottom.cursorY = currentY;
+            printf("%s\r", currentFile->name);
+            // printf("%s", bottomBuffer);
             break;
         case 1:
 
@@ -312,8 +374,9 @@ int main() {
         default:
             break;
         }
-
-        gspWaitForVBlank();
+        gfxFlushBuffers();
+        // gfxSwapBuffers()
+        // gspWaitForVBlank();
 	}
 
     consoleSelect(&top);

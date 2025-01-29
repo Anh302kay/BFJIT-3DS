@@ -75,7 +75,7 @@ Files* openDirectory(const char* path)
 
         Files* file = createEntry(path, name, 256, entry.attributes & FS_ATTRIBUTE_DIRECTORY);
 
-        printf("%s%s\n", path, name);
+        // printf("%s/%s\n", path, name);
 
         if(head == NULL)
             head = file;
@@ -130,7 +130,7 @@ static void loadDirectory(Files* head, const char* path)
                 break;
         }
 
-        printf("%s/%s\n", path, name);
+        // printf("%s/%s\n", path, name);
 
         if(current->nextEnt == NULL) {
             if(!notEnough) {
@@ -168,7 +168,6 @@ void openNewDirectory(Files* head, Files* newDir)
     path[strnlen(path, MAXFILELENGTH)] = '/';
     strncat(path, newDir->name, MAXFILELENGTH-1);
     newDir = head;
-    printf("\n%s\n", path);
     loadDirectory(head, path);
 }
 
