@@ -3,7 +3,7 @@ A brainfuck JIT compiler for the 3DS because why not
 
 Current Goals
 - ~~touchscreen keyboard~~ DONE
-- file import (50% complete)
+- ~~file import~~ DONE - but needs optimisations
 - optimise code generation
 
 ## Jit Initialisation Code Taken and Referenced From

@@ -9,6 +9,8 @@
 #include "utils.h"
 #include "opcode.h"
 
+#define posToBufferB(x, y) ((int)(y) * 40 + (int)(x))
+
 enum {
     R0 = 0,
     R1 = 1,
@@ -70,6 +72,7 @@ int parseCode(Code* code, const char* path) {
     // int jmpStackPos = 0;
     code->size = 0;
     code->asmSize = 20;
+    memset(code->code, 0, sizeof(Opcode) * code->capacity);
     int ch;
     while((ch = fgetc(file))) {
         if(ch == EOF) {
@@ -208,6 +211,51 @@ void jitCompile(Code* s_code, void* memory) {
 	ctr_flush_invalidate_cache();
 
 }
+// // custom strncpy
+// void c_strncpy(char* dst, const char* src, size_t size) {
+
+// }
+
+void scrollBufferUp(char* bottomBuffer, Files** topFile, Files** bottomFile, int scrollAmount) {
+    if((*topFile)->lastEnt == NULL)
+        return;
+    
+    memmove(&bottomBuffer[posToBufferB(0,scrollAmount+1)], &bottomBuffer[posToBufferB(0, 1)], 40*(29-scrollAmount));
+    memset(&bottomBuffer[posToBufferB(0,scrollAmount)], ' ', scrollAmount * 40);
+
+    for(int i = 0; i < scrollAmount; i++) {
+        if((*topFile)->lastEnt == NULL)
+            break;
+
+        *bottomFile = (*bottomFile)->lastEnt;
+        *topFile = (*topFile)->lastEnt;
+        strcpy(&bottomBuffer[posToBufferB(0,scrollAmount - i)], (*topFile)->name);
+        if((*topFile)->isDirectory)
+            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = '/';
+        else
+            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = ' ';
+    }
+}
+
+void scrollBufferDown(char* bottomBuffer, Files** topFile, Files** bottomFile, int scrollAmount) {
+    if((*bottomFile)->nextEnt == NULL)
+        return;
+        
+    memcpy(&bottomBuffer[posToBufferB(0,1)], &bottomBuffer[posToBufferB(0, scrollAmount+1)], 40*(29-scrollAmount));
+    memset(&bottomBuffer[posToBufferB(0,30-scrollAmount)], ' ', scrollAmount * 40);
+    for(int i = 0; i < scrollAmount; i++) {
+        if((*bottomFile)->nextEnt == NULL)
+            break;
+
+        *bottomFile = (*bottomFile)->nextEnt;
+        *topFile = (*topFile)->nextEnt;
+        strcpy(&bottomBuffer[posToBufferB(0,30-scrollAmount)], (*bottomFile)->name);
+        if((*bottomFile)->isDirectory)
+            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = '/';
+        else
+            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = ' ';
+    }
+}
 
 static inline void drawConfirm(const char* name) {
     printf("\x1b[1;5H\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB");
@@ -246,19 +294,36 @@ int main() {
     consoleSelect(&bottom);
     Files* fileList = openDirectory("/3ds");
     Files* currentFile = fileList;
+    Files* screenTop = fileList;
+    Files* screenBottom = fileList;
 
-    printf("Current Folder: %s/\n", currentFile->path);
+    int currentY = 2;
+    int bufY = 1;
+    int viewY = 2;
+    strcpy(bottomBuffer, "Current Dir: ");
+    strcpy(&bottomBuffer[13], currentFile->path);
+    bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = '/';
+    if(strlen(currentFile->path) > 27)
+        bufY++;
     for(Files* entry = fileList; entry != NULL; entry = entry->nextEnt) {
-        if(entry->isDirectory)
-            printf("%s/\n", entry->name);
-        else
-            printf("%s\n", entry->name);
+        if(entry->isDirectory) {
+            strcpy(&bottomBuffer[posToBufferB(0,bufY)], entry->name);
+            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = '/';
+        }
+        else {
+            strcpy(&bottomBuffer[posToBufferB(0,bufY)], entry->name);
+            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = ' ';
+        }
+        bufY++;
+        if(bufY > 29) {
+            screenBottom = entry;
+            break;
+        }
     }
+    // bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = '/';
 
     Code jitCode;
     initCode(&jitCode, 256);
-
-    int currentY = 1;
 
     char oldLocation[512];
     int mode = 0;
@@ -279,74 +344,149 @@ int main() {
             if(kRepeat & KEY_UP) {
                 if(currentFile->lastEnt != NULL)
                 {
-                    printf("%s\r", currentFile->name);
                     currentFile = currentFile->lastEnt;
+                    if(viewY == 2 && currentY != viewY) {
+                        scrollBufferUp(bottomBuffer, &screenTop, &screenBottom, 1);
+                    }
+                    else
+                        viewY--;
                     currentY--;
                 }
             } else if(kRepeat & KEY_DOWN) {
                 if(currentFile->nextEnt != NULL)
                 {
-                    printf("%s\r", currentFile->name);
-                    currentFile = currentFile->nextEnt;
                     currentY++;
+                    if(currentY > 30 && viewY == 30) {
+                        scrollBufferDown(bottomBuffer, &screenTop, &screenBottom, 1);
+                    }
+                    else 
+                        viewY++;
+                    currentFile = currentFile->nextEnt;
                 }
             } else if(kDown & KEY_LEFT) {
                 currentFile = currentFile->lastEnt->lastEnt;
                 if(currentFile == NULL)
                 {
-                    printf("%s\r", currentFile->name);
                     currentFile = fileList;
-                    currentY -= 2;
                 }
             } else if(kDown & KEY_RIGHT) {
                 if(currentFile->nextEnt->nextEnt != NULL)
                 {
-                    printf("%s\r", currentFile->name);
                     currentFile = currentFile->nextEnt->nextEnt;
-                    currentY += 2;
                 }
             }
             if(kDown & KEY_A) 
             {
                 if(currentFile->isDirectory) {
-                    consoleClear();
-                    currentY = 1;
+                    memset(bottomBuffer, ' ', 40*30);
                     openNewDirectory(fileList, currentFile);
                     currentFile = fileList;
-                    printf("Current Folder: %s\n", currentFile->path);
+                    strcpy(bottomBuffer, "Current Dir: ");
+                    strcpy(&bottomBuffer[13], currentFile->path);
+                    bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = ' ';
+                    bufY = 1;
+                    if(strlen(currentFile->path) > 27)
+                        bufY++; 
                     for(Files* entry = fileList; entry != NULL; entry = entry->nextEnt) {
-                        if(entry->isDirectory)
-                            printf("%s/\n", entry->name);
-                        else
-                            printf("%s\n", entry->name);
+                        if(entry->isDirectory) {
+                            strcpy(&bottomBuffer[posToBufferB(0,bufY)], entry->name);
+                            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = '/';
+                        }
+                        else {
+                            strcpy(&bottomBuffer[posToBufferB(0,bufY)], entry->name);
+                            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = ' ';
+                        }
+                        bufY++;
+                     if(bufY > 29) {
+                        screenBottom = entry;
+                        break;
+                        }
                     }
+                    currentY = 2;
+                    viewY = 2;
+                    bottomBuffer[40*30] = '\0';
                 }
                 else {
                     mode = 1;
                 }
             }
             else if(kDown & KEY_B) {
-                consoleClear();
+                memset(bottomBuffer, ' ', 40*30);
                 strncpy(oldLocation, getSlash(currentFile->path)+1, 512);
                 openPreviousDirectory(fileList, currentFile);
-                printf("Current Folder: %s\n", currentFile->path);
+
+                memset(bottomBuffer, ' ', 40);
+                strcpy(bottomBuffer, "Current Dir: ");
+                strcpy(&bottomBuffer[13], currentFile->path);
+                bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = ' ';
+                bufY = 1;
+                bool first = true;
+                u8 scrollStatus = 0; // 0 = not set, 1 = screen starts not scrolled,2 = screen starts scrolled
+                if(strlen(currentFile->path) > 27)
+                    bufY++;
+                
                 for(Files* file = fileList; file != NULL; file = file->nextEnt) {
                     if(strcmp(oldLocation, file->name) == 0) {
                         currentFile = file;
-                        currentY = 1;
+                        currentY = bufY +1;
+                        viewY = currentY;
+                        if(bufY > 30) {
+                            viewY = 2;
+                            screenTop = file;
+                            scrollStatus = 2;
+                        }
+                        else
+                        scrollStatus = 1;
                     }
-                    if(file->isDirectory)
-                        printf("%s/\n", file->name);
-                    else
-                        printf("%s\n", file->name);
+                    if(first) {
+                        screenTop = file;
+                        first = false;
+                    }
+                    if(bufY < 30) {
+                        strcpy(&bottomBuffer[posToBufferB(0,bufY)], file->name);
+                        if(file->isDirectory) 
+                            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = '/';
+                        else 
+                            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = ' ';
+                        if(bufY == 30 && scrollStatus == 1) {
+                            screenBottom = file;
+                            break;
+                        }
+                    }
+                    else if (screenTop != fileList) {
+                        if(bufY + 1 == currentY)
+                            memset(&bottomBuffer[posToBufferB(0,1)], ' ', 40*29);
+
+                        if(bufY + 1 - currentY > 30) {
+                            screenBottom = file;
+                            break;
+                        }
+
+                        strcpy(&bottomBuffer[posToBufferB(0,bufY - currentY+2)], file->name);
+                        
+                        if(file->isDirectory) 
+                            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = '/';
+                        else 
+                            bottomBuffer[strnlen(bottomBuffer, 40*30+1)] = ' ';
+                    }
+
+                    if(file->nextEnt == NULL)
+                        screenBottom = file;
+
+                    bufY++;
                 }
-                
+                bottomBuffer[40*30] = '\0';
             }
+
+            bottom.cursorY = 0;
+            bottom.cursorX = 0;
+            // printf("%s\r", currentFile->name);
+            printf("%s", bottomBuffer);
             bottom.bg = 7;
             bottom.fg = 0;
-            bottom.cursorY = currentY;
-            printf("%s\r", currentFile->name);
-            // printf("%s", bottomBuffer);
+            const char* selected = currentFile->name;
+            printf("\x1b[%D;0H%0.39s", viewY,  selected);
+            printf("\x1b[0;0H%D, %D, %D, %s", currentY, bufY , viewY, screenBottom->name);
             break;
         case 1:
 
@@ -376,7 +516,7 @@ int main() {
         }
         gfxFlushBuffers();
         // gfxSwapBuffers()
-        // gspWaitForVBlank();
+        gspWaitForVBlank();
 	}
 
     consoleSelect(&top);
