@@ -45,7 +45,6 @@ Files* openDirectory(const char* path)
     FSUSER_OpenArchive(&sdmcArchive, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""));
 
     Handle dirHandle;
-    FS_Archive archive;
     FSUSER_OpenDirectory(&dirHandle, sdmcArchive, fsMakePath(PATH_ASCII, path));
     u32 entriesRead = 1;
     FS_DirectoryEntry entry;
@@ -64,14 +63,7 @@ Files* openDirectory(const char* path)
             continue;
         
         char name[262] = {0};
-
-        for(int i = 0; i < 262; i++) {
-            if(entry.name[i] > 255)
-                name[i] = 2;
-            name[i] = entry.name[i];
-            if(entry.name[i] == 0)
-                break;
-        }
+        utf16_to_utf8(name, entry.name, MAXFILELENGTH);
 
         Files* file = createEntry(path, name, 256, entry.attributes & FS_ATTRIBUTE_DIRECTORY);
 
@@ -102,7 +94,6 @@ static void loadDirectory(Files* head, const char* path)
     FSUSER_OpenArchive(&sdmcArchive, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""));
 
     Handle dirHandle;
-    FS_Archive archive;
     FSUSER_OpenDirectory(&dirHandle, sdmcArchive, fsMakePath(PATH_ASCII, path));
     u32 entriesRead = 1;
     FS_DirectoryEntry entry;
@@ -121,14 +112,7 @@ static void loadDirectory(Files* head, const char* path)
             continue;
 
         char name[262] = {0};
-
-        for(int i = 0; i < 262; i++) {
-            if(entry.name[i] > 255)
-                name[i] = 2;
-            name[i] = entry.name[i];
-            if(entry.name[i] == 0)
-                break;
-        }
+        utf16_to_utf8(name, entry.name, MAXFILELENGTH);
 
         // printf("%s/%s\n", path, name);
 
