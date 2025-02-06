@@ -217,12 +217,15 @@ void jitCompile(Code* s_code, void* memory) {
 
 // }
 
-static inline void drawConfirm(const char* name) {
+static inline void drawConfirm(const char* name, bool selected) {
     printf("\x1b[1;5H\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB");
     printf("\x1b[2;5H\xBA             RUN             \xBA");
     printf("\x1b[3;5H\xBA                             \xBA");
     printf("\x1b[3;%DH%s", 31/2 - strnlen(name, 512)/2 + 5, name);
-    printf("\x1b[4;5H\xBA                             \xBA");
+    if(selected)
+    printf("\x1b[4;5H\xBA     YES                     \xBA");
+    else
+    printf("\x1b[4;5H\xBA                     NO      \xBA");
     printf("\x1b[5;5H\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC");
 }
 
@@ -266,6 +269,7 @@ int main() {
     initCode(&jitCode, 256);
 
     char oldLocation[512];
+    char selectedFile[512];
     int mode = 0;
     bool selection = true; // false = no, true = yes
     while(aptMainLoop())
@@ -339,25 +343,30 @@ int main() {
             printf("%s", bottomBuffer);
             bottom.bg = 7;
             bottom.fg = 0;
-            const char* selected = dList.currentFile->name;
             printf("\x1b[%D;0H%0.39s", dList.viewY,  dList.currentFile->name);
-            // printf("\x1b[0;0H%D, %D, %s", dList.currentY, dList.viewY, dList.viewBottom->name);
+            printf("\x1b[0;0H%D, %D, %s", dList.currentY, dList.viewY, dList.viewBottom->name);
             break;
         case 1:
 
-            drawConfirm(dList.currentFile->name);
-            if(kRepeat & KEY_A && selection) {
-                strncpy(oldLocation, dList.currentFile->path, 512);
-                strncat(oldLocation, dList.currentFile->name, 512);
+            drawConfirm(dList.currentFile->name, selection);
+            if(kDown & KEY_LEFT) {
+                selection = true;
+            }
+            else if(kDown & KEY_RIGHT) {
+                selection = false;
+            }
+            if(kDown & KEY_A && selection) {
+                strncpy(selectedFile, dList.currentFile->path, 512);
+                strncat(selectedFile, dList.currentFile->name, 512);
                 mode = 2;
-            } else if(kRepeat & KEY_B) {
+            } else if(kDown & KEY_B || (kDown & KEY_A && !selection)) {
                 mode = 0;
             }
             break;
         case 2:
             consoleSelect(&top);
             printf("Compiling: %s\n", dList.currentFile->name);
-            parseCode(&jitCode, oldLocation);
+            parseCode(&jitCode, selectedFile);
             jitCompile(&jitCode, memory);
             JitFunction func = (JitFunction)memory+(5*4);
             consoleSelect(&top);
@@ -370,7 +379,7 @@ int main() {
             break;
         }
         gfxFlushBuffers();
-        // gfxSwapBuffers()
+        gfxSwapBuffers();
         gspWaitForVBlank();
 	}
 
