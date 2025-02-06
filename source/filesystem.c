@@ -122,6 +122,7 @@ static void loadDirectory(Files* head, const char* path)
                 strncpy(current->name, name, 256);
                 current->isDirectory = entry.attributes & FS_ATTRIBUTE_DIRECTORY;
                 notEnough = true;
+                continue;
             }
             Files* file = createEntry(path, name, MAXFILELENGTH, entry.attributes & FS_ATTRIBUTE_DIRECTORY);
             current->nextEnt = file;

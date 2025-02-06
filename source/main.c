@@ -306,14 +306,27 @@ int main() {
                     dList.currentFile = dList.currentFile->nextEnt;
                 }
             } else if(kDown & KEY_LEFT) {
-                dList.currentFile = dList.currentFile->lastEnt->lastEnt;
-                if(dList.currentFile == NULL)
+                if(dList.currentFile->lastEnt->lastEnt != NULL)
                 {
-                    dList.currentFile = dList.fileList;
+                    dList.currentFile = dList.currentFile->lastEnt->lastEnt;
+                    if(dList.viewY == 2 && dList.currentY != dList.viewY) {
+                        scrollBufferUp(&dList, bottomBuffer, 1);
+                        scrollBufferUp(&dList, bottomBuffer, 1);
+                    }
+                    else
+                        dList.viewY-= 2;
+                    dList.currentY-= 2;
                 }
             } else if(kDown & KEY_RIGHT) {
                 if(dList.currentFile->nextEnt->nextEnt != NULL)
                 {
+                    dList.currentY+= 2;
+                    if(dList.currentY > 30 && dList.viewY == 30) {
+                        scrollBufferDown(&dList, bottomBuffer, 1);
+                        scrollBufferDown(&dList, bottomBuffer, 1);
+                    }
+                    else 
+                        dList.viewY+= 2;
                     dList.currentFile = dList.currentFile->nextEnt->nextEnt;
                 }
             }
