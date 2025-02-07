@@ -131,6 +131,12 @@ void jitCompile(Code* s_code, void* memory) {
     int jmpStack[256];
     int jmpStackPos = 0;
 
+    if(s_code->asmSize > 4096) {
+        printf("Too many instructions");
+        code[5] = ARM_BLX(LR);
+        s_code->asmSize = 6;
+    }
+
     int size = 5;
     code[1] = (u32)getKeyInput;
     code[2] = (u32)putchar; // address
@@ -240,7 +246,7 @@ int main() {
     char bottomBuffer[40*30+1];
     memset(bottomBuffer, ' ', 40*30+1);
     bottomBuffer[40*30] = '\0';
-    hidSetRepeatParameters(1500, 1000);
+    hidSetRepeatParameters(750, 500);
 
     consoleSelect(&top);
 
@@ -264,10 +270,9 @@ int main() {
     dList.viewY = 2;
 
     displayList(&dList, bottomBuffer);
-
+    u64 start, end;
     Code jitCode;
     initCode(&jitCode, 256);
-
     char oldLocation[512];
     char selectedFile[512];
     int mode = 0;
@@ -305,8 +310,8 @@ int main() {
                         dList.viewY++;
                     dList.currentFile = dList.currentFile->nextEnt;
                 }
-            } else if(kDown & KEY_LEFT) {
-                if(dList.currentFile->lastEnt->lastEnt != NULL)
+            } else if(kRepeat & KEY_LEFT) {
+                if(dList.currentFile->lastEnt != NULL && dList.currentFile->lastEnt->lastEnt != NULL)
                 {
                     dList.currentFile = dList.currentFile->lastEnt->lastEnt;
                     if(dList.viewY == 2 && dList.currentY != dList.viewY) {
@@ -317,8 +322,8 @@ int main() {
                         dList.viewY-= 2;
                     dList.currentY-= 2;
                 }
-            } else if(kDown & KEY_RIGHT) {
-                if(dList.currentFile->nextEnt->nextEnt != NULL)
+            } else if(kRepeat & KEY_RIGHT) {
+                if(dList.currentFile->nextEnt != NULL && dList.currentFile->nextEnt->nextEnt != NULL)
                 {
                     dList.currentY+= 2;
                     if(dList.currentY > 30 && dList.viewY == 30) {
@@ -341,7 +346,7 @@ int main() {
                     mode = 1;
                 }
             }
-            else if(kDown & KEY_B) {
+            else if(kDown & KEY_B && strcmp(dList.currentFile->path, "/") != 0) {
                 memset(bottomBuffer, ' ', 40*30);
                 strncpy(oldLocation, getSlash(dList.currentFile->path)+1, 512);
                 openPreviousDirectory(dList.fileList, dList.currentFile);
@@ -357,7 +362,7 @@ int main() {
             bottom.bg = 7;
             bottom.fg = 0;
             printf("\x1b[%D;0H%0.39s", dList.viewY,  dList.currentFile->name);
-            printf("\x1b[0;0H%D, %D, %s", dList.currentY, dList.viewY, dList.viewBottom->name);
+            // printf("\x1b[0;0H%D, %D, %s", dList.currentY, dList.viewY, dList.viewBottom->name);
             break;
         case 1:
 
@@ -382,8 +387,10 @@ int main() {
             parseCode(&jitCode, selectedFile);
             jitCompile(&jitCode, memory);
             JitFunction func = (JitFunction)memory+(5*4);
-            consoleSelect(&top);
+            start = svcGetSystemTick();
             func();
+            end = svcGetSystemTick();
+            printf("\nTime: %llu\n", (end - start));
             consoleSelect(&bottom);
             mode = 0;
             break;
