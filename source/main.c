@@ -246,7 +246,7 @@ int main() {
     char bottomBuffer[40*30+1];
     memset(bottomBuffer, ' ', 40*30+1);
     bottomBuffer[40*30] = '\0';
-    hidSetRepeatParameters(750, 500);
+    hidSetRepeatParameters(750, 200);
 
     consoleSelect(&top);
 
@@ -270,7 +270,6 @@ int main() {
     dList.viewY = 2;
 
     displayList(&dList, bottomBuffer);
-    u64 start, end;
     Code jitCode;
     initCode(&jitCode, 256);
     char oldLocation[512];
@@ -387,10 +386,7 @@ int main() {
             parseCode(&jitCode, selectedFile);
             jitCompile(&jitCode, memory);
             JitFunction func = (JitFunction)memory+(5*4);
-            start = svcGetSystemTick();
             func();
-            end = svcGetSystemTick();
-            printf("\nTime: %llu\n", (end - start));
             consoleSelect(&bottom);
             mode = 0;
             break;
@@ -399,7 +395,6 @@ int main() {
             break;
         }
         gfxFlushBuffers();
-        gfxSwapBuffers();
         gspWaitForVBlank();
 	}
 
